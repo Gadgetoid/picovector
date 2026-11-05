@@ -151,7 +151,13 @@ namespace picovector {
     float                    fog_far, fog_scale;   // fog_scale 0 = no fog
     pico3d_shading_t         shading;
     bool                     do_nmap, do_matcap;
+    const pico3d_backend_t  *backend = nullptr;
   };
+
+  static inline int raster(const pass2_job_t &j, pico3d_target_t *t, const pico3d_tri_t *tri) {
+    if (j.backend) return j.backend->triangle(tri, j.material);
+    return pico3d_raster_triangle(t, tri, j.material, j.raster_light);
+  }
 
   // `bin` (or null = all triangles): a list of triangle indices this core should fill —
   // pre-binned to its band so each core only SETS UP the triangles in its half, instead
@@ -213,7 +219,7 @@ namespace picovector {
           tri.uv_[k] = vuv[k]; tri.rgb[k] = vrgb[k];
         }
         if (do_nmap) for (int k = 0; k < 3; k++) { tri.n[k] = vn[k]; tri.tan[k] = vtan[k]; }
-        int wrote = pico3d_raster_triangle(t, &tri, j.material, j.raster_light);
+        int wrote = raster(j, t, &tri);
         pico3d_prof_px += (uint64_t)wrote;   // the raster already counts these
         if (wrote > 0) drawn++;
         continue;
@@ -234,7 +240,7 @@ namespace picovector {
         project_into(tri, 0, out[0], j.tw, j.th);
         project_into(tri, 1, out[k], j.tw, j.th);
         project_into(tri, 2, out[k + 1], j.tw, j.th);
-        int wrote = pico3d_raster_triangle(t, &tri, j.material, j.raster_light);
+        int wrote = raster(j, t, &tri);
         pico3d_prof_px += (uint64_t)wrote;
         if (wrote > 0) drawn++;
       }
@@ -318,6 +324,10 @@ namespace picovector {
 
   void pico3d_set_cores(int n) { g_cores = (n >= 2) ? 2 : 1; }
   int  pico3d_get_cores() { return g_cores; }
+
+  static const pico3d_backend_t *g_backend = nullptr;
+  void pico3d_set_backend(const pico3d_backend_t *backend) { g_backend = backend; }
+  const pico3d_backend_t *pico3d_get_backend() { return g_backend; }
 
   // --- pass 1: transform (+ light) a VERTEX RANGE — factored so it can split across
   // cores. Each vertex writes its own vcache slot, so two cores over disjoint ranges
@@ -446,6 +456,10 @@ namespace picovector {
                     const mat4_t *view) {
     prepared_t p = prepare_draw(mesh, model, view_proj, material, shading, light, view);
     if (pico3d_cull_mesh(mesh, &p.mvp)) return 0;   // wholly outside the frustum
+    if (g_backend && g_backend->draw_mesh && !p.do_nmap && !p.do_matcap) {
+      int drawn = g_backend->draw_mesh(t, mesh, model, &p.mvp, material, p.shading, light);
+      if (drawn >= 0) return drawn;
+    }
     const mat4_t &mvp = p.mvp;
     const mat4_t &mc_nrm = p.mc_nrm;
     pico3d_light_t rlight = p.rlight;
@@ -487,6 +501,12 @@ namespace picovector {
     job.fog = t->fog;          job.fog_far = t->fog_far;
     job.fog_scale = (t->fog_far > t->fog_near) ? 1.0f / (t->fog_far - t->fog_near) : 0.0f;
     job.do_nmap = do_nmap;     job.do_matcap = do_matcap;
+    if (g_backend && !do_nmap && !do_matcap && !material->texture && g_backend->begin(t, material)) {
+      job.backend = g_backend;
+      int drawn = draw_pass2(job, nullptr, 0);
+      g_backend->end(t);
+      return drawn;
+    }
     return pico3d_dispatch_pass2(job);
   }
 
@@ -767,6 +787,7 @@ namespace picovector {
   // clears nothing, so the clip has to be filled in (surface_view does).
   void __not_in_flash_func(pico3d_depth_clear)(pico3d_target_t *t, uint16_t value) {
     if (!t->depth) return;
+    if (g_backend && g_backend->depth_clear) g_backend->depth_clear(t, value);
     int x0 = t->clip_x0 < 0 ? 0 : t->clip_x0;
     int y0 = t->clip_y0 < 0 ? 0 : t->clip_y0;
     int x1 = t->clip_x1 > t->width  ? t->width  : t->clip_x1;

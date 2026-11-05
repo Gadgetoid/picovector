@@ -237,7 +237,7 @@ namespace picovector {
   //   fill      = the scanline rasterise (coverage + per-pixel emit)
   //   bbox_px   = total bbox pixels iterated by fill (vs px = those written)
   //   px        = covered pixels actually written
-#if defined(__arm__)
+#if defined(__arm__) && defined(__ARM_ARCH_PROFILE) && __ARM_ARCH_PROFILE == 'M'
   static inline uint32_t pico3d_prof_cyc() {
     static bool en = false;
     if (!en) {                                            // enable DWT cycle counter once
@@ -359,6 +359,19 @@ namespace picovector {
   // the win is on FILL-bound scenes. No-op (always 1 core) on host.
   void pico3d_set_cores(int n);
   int  pico3d_get_cores();
+
+  struct pico3d_backend_t {
+    void (*depth_clear)(const pico3d_target_t *t, uint16_t value);
+    bool (*begin)(const pico3d_target_t *t, const pico3d_material_t *m);
+    int  (*triangle)(const pico3d_tri_t *tri, const pico3d_material_t *m);
+    void (*end)(const pico3d_target_t *t);
+    int  (*draw_mesh)(const pico3d_target_t *t, const pico3d_mesh_t *mesh, const mat4_t *model,
+                      const mat4_t *mvp, const pico3d_material_t *m, pico3d_shading_t shading,
+                      const pico3d_light_t *light);
+  };
+
+  void pico3d_set_backend(const pico3d_backend_t *backend);
+  const pico3d_backend_t *pico3d_get_backend();
 
   // Rasterise one triangle. Assumes all clip.w > 0 (near-plane handling is the
   // caller's job — see pico3d_draw_mesh). Performs viewport map, back-face cull,
