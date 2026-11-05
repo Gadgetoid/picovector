@@ -160,7 +160,7 @@ namespace picovector {
       rect_t             _bounds;
       rect_t             _clip;
       uint8_t            _alpha = 255;
-      antialias_t        _antialias = OFF;
+      antialias_t        _antialias = X4;
       fill_rule_t        _fill_rule = EVEN_ODD;
       pixel_format_t     _pixel_format = RGBA8888;
       bool               _has_palette = false;

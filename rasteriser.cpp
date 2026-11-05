@@ -31,8 +31,12 @@ using std::sort, std::min, std::max;
 // A tile spans the whole lores screen, so any shape rasterises in a single tile /
 // single pass. For the signed-area path this also means no interior tile
 // boundaries, so edge coverage is exact everywhere (no cross-tile clamping).
+#ifndef TILE_WIDTH
 #define TILE_WIDTH 160
+#endif
+#ifndef TILE_HEIGHT
 #define TILE_HEIGHT 120
+#endif
 #define MAX_NODES_PER_SCANLINE 32 // edge crossings per scanline; guarded in
                                   // add_line_segment_to_nodes. Extras beyond 32 are
                                   // dropped (convex = 2; a busy scanline rarely nears it).

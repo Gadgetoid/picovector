@@ -1,3 +1,4 @@
+#include <cstring>
 #include "../brush.hpp"
 
 namespace picovector {
@@ -45,11 +46,31 @@ namespace picovector {
       uint32_t *dst = (uint32_t*)target->ptr(spans[i].x, spans[i].y);
       const uint8_t *mask = spans[i].mask;
       if(opaque) {
-        for(int w = spans[i].w; w; w--, dst++, mask++) {
+        int w = spans[i].w;
+        while(w > 0) {
           uint32_t m = *mask;
-          if(m == 0u) continue;
-          if(m == 255u) { *dst = src; continue; }
-          *dst = blend_over_premul(*dst, _premul_mul_alpha(src, m));
+          if(m == 255u) {
+            *dst++ = src;
+            mask++;
+            w--;
+            while(w >= 4) {
+              uint32_t quad;
+              memcpy(&quad, mask, sizeof(quad));
+              if(quad != 0xffffffffu) break;
+              dst[0] = src;
+              dst[1] = src;
+              dst[2] = src;
+              dst[3] = src;
+              dst += 4;
+              mask += 4;
+              w -= 4;
+            }
+            continue;
+          }
+          if(m != 0u) *dst = blend_over_premul(*dst, _premul_mul_alpha(src, m));
+          dst++;
+          mask++;
+          w--;
         }
       } else {
         for(int w = spans[i].w; w; w--, dst++, mask++) {
